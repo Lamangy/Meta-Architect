@@ -1,0 +1,5 @@
+{
+  "name": "MetaArchitect - AI Multi-Agent Studio",
+  "description": "Ein Framework zur Simulation von MetaGPT-Workflows. Erstelle vollständige Software-Designs durch die Zusammenarbeit spezialisierter KI-Agenten.",
+  "requestFramePermissions": []
+}
