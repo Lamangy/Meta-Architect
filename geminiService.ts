@@ -73,7 +73,7 @@ export const fetchModels = async (apiKey: string) => {
     }
     // Filter for models that support generateContent
     return models
-      .filter(m => m.supportedGenerationMethods.includes('generateContent'))
+      .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
       .map(m => m.name.replace('models/', ''));
   } catch (error) {
     console.error("Error fetching models:", error);
