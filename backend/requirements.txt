@@ -2,3 +2,6 @@ fastapi
 uvicorn
 python-multipart
 aiofiles
+crewai
+crewai-tools
+langchain-google-genai

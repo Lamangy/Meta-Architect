@@ -120,7 +120,7 @@ const App: React.FC = () => {
       setTimeout(() => setApiStatus('idle'), 3000);
     } catch (e: any) {
       setApiStatus('error');
-      setError("Handshake fehlgeschlagen! Entweder läuft das lokale OpenManus Backend nicht (Port 8000) oder der API-Key ist ungültig.");
+      setError("Handshake fehlgeschlagen! Entweder läuft das lokale CrewAI Backend nicht (Port 8000) oder der API-Key ist ungültig.");
     }
   };
 
@@ -164,7 +164,7 @@ const App: React.FC = () => {
     setIsProcessing(true);
     setError(null);
     setDownloadUrl(null);
-    setOutputs([{ role: 'OpenManus Agent System', content: 'Initialisiere Analyse...', status: 'working' }]);
+    setOutputs([{ role: 'CrewAI Agent System', content: 'Initialisiere Analyse...', status: 'working' }]);
 
     const formData = new FormData();
     formData.append('idea', projectIdea);
@@ -192,7 +192,7 @@ const App: React.FC = () => {
       const url = window.URL.createObjectURL(blob);
       setDownloadUrl(url);
 
-      setOutputs([{ role: 'OpenManus Agent System', content: 'Projekt erfolgreich generiert!', status: 'completed' }]);
+      setOutputs([{ role: 'CrewAI Agent System', content: 'Projekt erfolgreich generiert!', status: 'completed' }]);
 
       // Save dummy project to history
       const id = crypto.randomUUID();
@@ -200,7 +200,7 @@ const App: React.FC = () => {
         id,
         name: projectIdea.slice(0, 30) || attachedFile?.name || 'Neues Projekt',
         idea: projectIdea,
-        outputs: [{ role: 'OpenManus', content: 'Fertig', status: 'completed' }],
+        outputs: [{ role: 'CrewAI', content: 'Fertig', status: 'completed' }],
         updatedAt: Date.now(),
         lastCompletedStep: 1
       }, ...prev]);
@@ -224,7 +224,7 @@ const App: React.FC = () => {
               <Terminal className="text-white w-5 h-5" />
             </div>
             <h1 className="text-sm font-bold tracking-tight text-white uppercase hidden md:block">
-              OpenManus <span className="text-indigo-400">Studio</span>
+              CrewAI <span className="text-indigo-400">Studio</span>
             </h1>
           </div>
         </div>
@@ -456,9 +456,9 @@ const App: React.FC = () => {
                 <div className="w-16 h-16 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-center mx-auto">
                   <Sparkles className="w-8 h-8 text-indigo-500/50" />
                 </div>
-                <h2 className="text-xl font-medium text-slate-300">OpenManus Software/Spiele Studio</h2>
+                <h2 className="text-xl font-medium text-slate-300">CrewAI Software/Spiele Studio</h2>
                 <p className="text-slate-500 text-sm">
-                  Lade ein Manuskript hoch. OpenManus analysiert dieses, plant die Architektur und erstellt das komplette Projekt inklusive Asset-Auflistung und Dokumentation.
+                  Lade ein Manuskript hoch. CrewAI analysiert dieses, plant die Architektur und erstellt das komplette Projekt inklusive Asset-Auflistung und Dokumentation.
                 </p>
               </div>
             )}
@@ -466,7 +466,7 @@ const App: React.FC = () => {
             {isProcessing && (
               <div className="text-center space-y-6">
                 <Loader2 className="w-16 h-16 text-indigo-500 animate-spin mx-auto" />
-                <h2 className="text-xl font-medium text-slate-300">OpenManus generiert dein Projekt...</h2>
+                <h2 className="text-xl font-medium text-slate-300">CrewAI generiert dein Projekt...</h2>
                 <p className="text-slate-500 text-sm max-w-md">
                   Dies kann einige Minuten dauern, da mehrere Agenten das Manuskript lesen, Code schreiben und Dateien generieren.
                 </p>
@@ -493,7 +493,7 @@ const App: React.FC = () => {
                 </div>
                 <a
                   href={downloadUrl}
-                  download="openmanus_project.zip"
+                  download="crewai_project.zip"
                   className="inline-flex items-center space-x-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-emerald-600/20"
                 >
                   <Download className="w-5 h-5" />

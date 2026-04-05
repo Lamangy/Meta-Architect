@@ -1,15 +1,16 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
 import uvicorn
 import os
 import shutil
-import asyncio
 import uuid
-import tempfile
 import zipfile
-import subprocess
+import asyncio
+
+# CrewAI imports
+from crewai import Agent, Task, Crew, Process, LLM
+from crewai.tools import tool
 
 app = FastAPI()
 
@@ -31,7 +32,7 @@ def read_root():
     return {"status": "ok"}
 
 @app.post("/run_manus")
-async def run_manus(
+async def run_crewai(
     background_tasks: BackgroundTasks,
     idea: str = Form(...),
     additionalInfo: str = Form(""),
@@ -42,18 +43,6 @@ async def run_manus(
     session_id = str(uuid.uuid4())
     work_dir = os.path.join(os.getcwd(), f"workspace_{session_id}")
     os.makedirs(work_dir, exist_ok=True)
-
-    # Check if OpenManus exists, if not we will clone it dynamically just for this run to avoid commiting heavy stuff
-    openmanus_dir = os.path.join(os.getcwd(), f"OpenManus_{session_id}")
-    try:
-        shutil.copytree(os.path.join(os.getcwd(), "OpenManus"), openmanus_dir)
-    except Exception as e:
-        # Fallback to cloning if we don't have a cached version
-        print("Cloning OpenManus...")
-        proc = await asyncio.create_subprocess_exec(
-            "git", "clone", "https://github.com/FoundationAgents/OpenManus.git", openmanus_dir
-        )
-        await proc.communicate()
 
     # Optional File saving
     file_content = ""
@@ -68,62 +57,96 @@ async def run_manus(
         except:
             file_content += "[Binary or non-utf8 file attached]\n\n"
 
-    # Construct the strict prompt for OpenManus
-    prompt = f"""Du bist ein Experten-Entwickler und System-Architekt-Agent für ein Spiele-/Software-Studio.
+    # Define a tool for CrewAI to write files to the workspace
+    @tool("Write File Tool")
+    def write_file_tool(filename: str, content: str) -> str:
+        """Write content to a file in the project workspace.
+        Use this to create HTML, JS, CSS, Python, Markdown, or any other necessary files.
+        Important: You must only provide the filename (e.g. 'index.html', 'assets.md'), not a full path.
+        """
+        # Ensure safe path
+        safe_filename = os.path.basename(filename)
+        path = os.path.join(work_dir, safe_filename)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return f"Successfully wrote {safe_filename}."
 
-    Ich möchte, dass du die folgende Idee/Manuskript analysierst und in diesem Ordner ein vollständiges Projekt erstellst: {work_dir}
+    # Configure the Gemini LLM
+    gemini_llm = LLM(
+        model=f"gemini/{model}",
+        api_key=apiKey
+    )
 
-    Idee/Manuskript: {idea}
-    Zusätzliche Infos: {additionalInfo}
-    {file_content}
+    # Agent: Game Designer / Architect
+    designer = Agent(
+        role='Lead Game and Software Architect',
+        goal='Design the complete architecture, UI/UX, and asset requirements based on user specifications.',
+        backstory='You are a world-class system architect and game designer. You excel at translating vague ideas into concrete technical blueprints and asset lists.',
+        verbose=True,
+        allow_delegation=False,
+        llm=gemini_llm,
+        tools=[write_file_tool]
+    )
 
-    DEINE AUFGABE:
-    1. Erstelle die Logik und den Code (z.B. HTML/JS/CSS oder Python) in dem Ordner: {work_dir}
-    2. Wenn du Grafiken oder Sounds benötigst, verwende in deinem Code relative Pfade (z.B. './assets/grafik/player.png' oder './assets/sound/jump.mp3').
-    3. WICHTIG: Erstelle eine Datei namens 'assets.md' im Ordner {work_dir}. In dieser Datei MUST DU ALLE benötigten Grafiken und Sounds auflisten. Jede Zeile MUSS enthalten: Dateiname, genauer Pfad im Projekt, und genaue erforderliche Größe/Dimensionen (z.B. 32x32 Pixel für Bilder, oder ungefähre Länge für Sound). Ich werde diese Dateien später bereitstellen.
-    4. WICHTIG: Erstelle eine detaillierte 'README.md' im Ordner {work_dir}, die genau erklärt, wie man das Projekt installiert und startet.
+    # Agent: Fullstack Developer
+    developer = Agent(
+        role='Senior Fullstack Engineer',
+        goal='Write clean, functional code (HTML/CSS/JS or Python) to implement the software/game design.',
+        backstory='You are an expert programmer who writes flawless, efficient code. You always follow best practices and integrate assets correctly.',
+        verbose=True,
+        allow_delegation=False,
+        llm=gemini_llm,
+        tools=[write_file_tool]
+    )
 
-    Arbeite autonom, schreibe die Dateien direkt in das Verzeichnis. Beende deine Arbeit erst, wenn alle Dateien generiert wurden.
-    """
+    # Task 1: Analyze & Write Documentation
+    task_docs = Task(
+        description=f"""
+        Analyze the following idea and requirements:
+        Idea: {idea}
+        Additional Info: {additionalInfo}
+        {file_content}
 
-    config_dir = os.path.join(openmanus_dir, "config")
-    os.makedirs(config_dir, exist_ok=True)
-    config_path = os.path.join(config_dir, "config.toml")
+        Your job:
+        1. Design the application/game.
+        2. Use the Write File Tool to create an 'assets.md' file. This file MUST list every single graphical or audio asset the game will need (e.g. background, player sprite, jump sound).
+           Each line in 'assets.md' MUST include: The filename, the relative path (e.g. ./assets/images/player.png), and the exact required dimensions/size (e.g. 32x32px or 5 seconds).
+        3. Use the Write File Tool to create a 'README.md' file that explains exactly how to install and run the project.
+        """,
+        expected_output="Confirmation that assets.md and README.md have been successfully written to the workspace.",
+        agent=designer
+    )
 
-    # Using Google's OpenAI compatibility layer
-    toml_content = f"""
-[llm]
-model = "{model}"
-base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
-api_key = "{apiKey}"
-max_tokens = 8192
-temperature = 0.4
-"""
-    with open(config_path, "w") as f:
-        f.write(toml_content)
+    # Task 2: Write the Code
+    task_code = Task(
+        description="""
+        Based on the architect's design, write the actual functional code for the application/game.
+        Use the Write File Tool to create all necessary source code files (e.g., 'index.html', 'style.css', 'game.js', or equivalent).
+        Ensure all references to graphics or sounds point to the exact relative paths defined in the assets.md file.
+        The game/software must be fully functional.
+        """,
+        expected_output="Confirmation that all source code files have been written to the workspace.",
+        agent=developer
+    )
 
-    print(f"Starting OpenManus for session {session_id}...")
+    crew = Crew(
+        agents=[designer, developer],
+        tasks=[task_docs, task_code],
+        verbose=True,
+        process=Process.sequential
+    )
 
+    print(f"Starting CrewAI for session {session_id}...")
     try:
-        process = await asyncio.create_subprocess_exec(
-            "python", "main.py", "--prompt", prompt,
-            cwd=openmanus_dir,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-
-        stdout, stderr = await process.communicate()
-        print(f"OpenManus Process Finished. Code: {process.returncode}")
-
-        # We can dump stdout for logging/debugging if needed:
-        # print("OpenManus STDOUT:", stdout.decode("utf-8", errors="ignore"))
-        # print("OpenManus STDERR:", stderr.decode("utf-8", errors="ignore"))
-
+        # Run the crew synchronously in a thread block since CrewAI execution is blocking
+        await asyncio.to_thread(crew.kickoff)
+        print("CrewAI Process Finished successfully.")
     except Exception as e:
-        print(f"Error running OpenManus: {e}")
-        shutil.rmtree(openmanus_dir, ignore_errors=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error running CrewAI: {e}")
+        shutil.rmtree(work_dir, ignore_errors=True)
+        raise HTTPException(status_code=500, detail=f"CrewAI Error: {str(e)}")
 
+    # Zip the workspace folder
     zip_path = os.path.join(os.getcwd(), f"project_{session_id}.zip")
 
     def zipdir(path, ziph):
@@ -133,18 +156,16 @@ temperature = 0.4
                            os.path.relpath(os.path.join(root, file),
                                            os.path.join(path, '..')))
 
-    zipf = zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED)
-    zipdir(work_dir, zipf)
-    zipf.close()
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        zipdir(work_dir, zipf)
 
     # Clean up workspace folder immediately
     shutil.rmtree(work_dir, ignore_errors=True)
-    shutil.rmtree(openmanus_dir, ignore_errors=True)
 
+    # Schedule zip file deletion after download
     background_tasks.add_task(cleanup_files, "", zip_path)
 
-    # Return the zip file
-    return FileResponse(zip_path, media_type="application/zip", filename="openmanus_project.zip")
+    return FileResponse(zip_path, media_type="application/zip", filename="crewai_project.zip")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
