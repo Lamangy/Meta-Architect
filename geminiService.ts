@@ -65,30 +65,24 @@ export const extractCode = (markdown: string): string | undefined => {
 
 export const fetchModels = async (apiKey: string) => {
   try {
-    const ai = new GoogleGenAI({ apiKey });
-    // GoogleGenAI models.list does not seem to reliably return an async iterator in some browser builds
-    // or it requires pagination. Let's get the list and map it properly.
-    const response = await ai.models.list();
-    const models = [];
+    // We use the REST API directly to avoid browser SDK issues with iterators
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
 
-    // In newer GenAI SDK versions, models.list() might return an array or an iterator
-    for await (const model of response) {
-      models.push(model);
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error?.message || "Ungültiger API-Key");
+    }
+
+    const data = await response.json();
+    if (!data.models) {
+        throw new Error("Keine Modelle gefunden");
     }
 
     // Filter for models that support generateContent
-    const mappedModels = models
-      .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
-      .map(m => m.name.replace('models/', ''));
+    const mappedModels = data.models
+      .filter((m: any) => m.supportedGenerationMethods?.includes('generateContent'))
+      .map((m: any) => m.name.replace('models/', ''));
 
-    if (mappedModels.length === 0) {
-       // Fallback if the SDK is empty or misconfigured, test a simple generation to verify the key works
-       await ai.models.generateContent({
-           model: 'gemini-2.5-flash',
-           contents: "PING"
-       });
-       return ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3.0-pro'];
-    }
     return mappedModels;
   } catch (error) {
     console.error("Error fetching models:", error);
