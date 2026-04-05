@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"vite\" \"bash -c 'python backend/api.py'\"",
+    "dev": "concurrently \"vite\" \"python backend/api.py\"",
     "build": "vite build",
     "lint": "tsc --noEmit",
     "preview": "vite preview"
