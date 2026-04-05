@@ -84,17 +84,26 @@ const App: React.FC = () => {
   const testConnection = async () => {
     setApiStatus('checking');
     try {
-      // Test the local backend server instead of Gemini directly
+      // Test both the local backend server and the Gemini API key
       const response = await fetch('http://localhost:8000/');
-      if (response.ok) {
-        setApiStatus('ok');
-        setTimeout(() => setApiStatus('idle'), 3000);
-      } else {
+      if (!response.ok) {
         throw new Error("Backend not OK");
       }
+
+      if (apiConfig.apiKey) {
+         const { GoogleGenAI } = await import("@google/genai");
+         const ai = new GoogleGenAI({ apiKey: apiConfig.apiKey });
+         await ai.models.generateContent({
+           model: apiConfig.selectedModel || 'gemini-2.5-flash',
+           contents: "Hello"
+         });
+      }
+
+      setApiStatus('ok');
+      setTimeout(() => setApiStatus('idle'), 3000);
     } catch (e: any) {
       setApiStatus('error');
-      setError("Verbindung zum lokalen OpenManus Backend fehlgeschlagen. Läuft der Server auf Port 8000?");
+      setError("Handshake fehlgeschlagen! Entweder läuft das lokale OpenManus Backend nicht (Port 8000) oder der API-Key ist ungültig.");
     }
   };
 
@@ -273,26 +282,35 @@ const App: React.FC = () => {
                     disabled={isFetchingModels || !apiConfig.apiKey}
                     className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg text-xs font-bold transition-colors flex items-center space-x-2"
                   >
-                    {isFetchingModels ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Settings className="w-3.5 h-3.5" />}
-                    <span>Laden</span>
+                    {isFetchingModels ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Activity className="w-3.5 h-3.5" />}
+                    <span>Laden & Handshake</span>
                   </button>
                 </div>
               </div>
 
-              {availableModels.length > 0 && (
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Modell wählen</label>
-                  <select 
-                    value={apiConfig.selectedModel}
-                    onChange={(e) => setApiConfig({...apiConfig, selectedModel: e.target.value})}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500 transition-colors"
-                  >
-                    {availableModels.map(m => (
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-500 uppercase">Modell wählen</label>
+                <select
+                  value={apiConfig.selectedModel}
+                  onChange={(e) => {
+                    const newConfig = {...apiConfig, selectedModel: e.target.value};
+                    setApiConfig(newConfig);
+                    saveApiConfig(newConfig);
+                  }}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500 transition-colors"
+                >
+                  {availableModels.length > 0 ? (
+                    availableModels.map(m => (
                       <option key={m} value={m}>{m}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
+                    ))
+                  ) : (
+                    <>
+                      <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+                      <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+                    </>
+                  )}
+                </select>
+              </div>
 
               <div className="pt-4">
                 <button 

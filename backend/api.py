@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -21,12 +21,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+def cleanup_files(work_dir: str, zip_path: str):
+    shutil.rmtree(work_dir, ignore_errors=True)
+    if os.path.exists(zip_path):
+        os.remove(zip_path)
+
 @app.get("/")
 def read_root():
     return {"status": "ok"}
 
 @app.post("/run_manus")
 async def run_manus(
+    background_tasks: BackgroundTasks,
     idea: str = Form(...),
     additionalInfo: str = Form(""),
     apiKey: str = Form(...),
@@ -36,6 +42,18 @@ async def run_manus(
     session_id = str(uuid.uuid4())
     work_dir = os.path.join(os.getcwd(), f"workspace_{session_id}")
     os.makedirs(work_dir, exist_ok=True)
+
+    # Check if OpenManus exists, if not we will clone it dynamically just for this run to avoid commiting heavy stuff
+    openmanus_dir = os.path.join(os.getcwd(), f"OpenManus_{session_id}")
+    try:
+        shutil.copytree(os.path.join(os.getcwd(), "OpenManus"), openmanus_dir)
+    except Exception as e:
+        # Fallback to cloning if we don't have a cached version
+        print("Cloning OpenManus...")
+        proc = await asyncio.create_subprocess_exec(
+            "git", "clone", "https://github.com/FoundationAgents/OpenManus.git", openmanus_dir
+        )
+        await proc.communicate()
 
     # Optional File saving
     file_content = ""
@@ -68,11 +86,7 @@ async def run_manus(
     Arbeite autonom, schreibe die Dateien direkt in das Verzeichnis. Beende deine Arbeit erst, wenn alle Dateien generiert wurden.
     """
 
-    # We need to run OpenManus with the provided config.
-    # OpenManus uses config.toml inside config/config.toml
-    # Let's dynamically create a config for this run.
-
-    config_dir = os.path.join(os.getcwd(), "OpenManus", "config")
+    config_dir = os.path.join(openmanus_dir, "config")
     os.makedirs(config_dir, exist_ok=True)
     config_path = os.path.join(config_dir, "config.toml")
 
@@ -90,31 +104,23 @@ temperature = 0.4
 
     print(f"Starting OpenManus for session {session_id}...")
 
-    # Run OpenManus via subprocess.
-    # OpenManus main.py takes input from stdin.
     try:
         process = await asyncio.create_subprocess_exec(
             "python", "main.py",
-            cwd=os.path.join(os.getcwd(), "OpenManus"),
+            cwd=openmanus_dir,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
 
         stdout, stderr = await process.communicate(input=prompt.encode('utf-8'))
-
         print(f"OpenManus Process Finished. Code: {process.returncode}")
-        # print(stdout.decode())
-        if process.returncode != 0:
-            print("Error from OpenManus:")
-            print(stderr.decode())
-            # Don't strictly fail, maybe it partially succeeded.
 
     except Exception as e:
         print(f"Error running OpenManus: {e}")
+        shutil.rmtree(openmanus_dir, ignore_errors=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-    # Now, zip the workspace_id folder
     zip_path = os.path.join(os.getcwd(), f"project_{session_id}.zip")
 
     def zipdir(path, ziph):
@@ -128,8 +134,11 @@ temperature = 0.4
     zipdir(work_dir, zipf)
     zipf.close()
 
-    # Clean up workspace folder
+    # Clean up workspace folder immediately
     shutil.rmtree(work_dir, ignore_errors=True)
+    shutil.rmtree(openmanus_dir, ignore_errors=True)
+
+    background_tasks.add_task(cleanup_files, "", zip_path)
 
     # Return the zip file
     return FileResponse(zip_path, media_type="application/zip", filename="openmanus_project.zip")
