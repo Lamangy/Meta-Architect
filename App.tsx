@@ -71,11 +71,28 @@ const App: React.FC = () => {
   const handleFetchModels = async (key: string) => {
     if (!key) return;
     setIsFetchingModels(true);
+    setError(null); // Clear previous errors
     try {
       const models = await fetchModels(key);
-      setAvailableModels(models);
-    } catch (e) {
-      setError("Modelle konnten nicht geladen werden. Prüfe deinen API-Key.");
+      if (models && models.length > 0) {
+        setAvailableModels(models);
+        // Automatically select the first model if none is selected or current is invalid
+        if (!models.includes(apiConfig.selectedModel)) {
+           const newConfig = {...apiConfig, apiKey: key, selectedModel: models[0]};
+           setApiConfig(newConfig);
+           saveApiConfig(newConfig);
+        } else {
+           const newConfig = {...apiConfig, apiKey: key};
+           setApiConfig(newConfig);
+           saveApiConfig(newConfig);
+        }
+        alert("Handshake erfolgreich! Modelle wurden geladen.");
+      } else {
+        setError("API Key ist gültig, aber es konnten keine Modelle gefunden werden.");
+      }
+    } catch (e: any) {
+      setError(`Fehler beim Handshake: ${e.message || 'Ungültiger API-Key oder Netzwerkfehler.'}`);
+      setAvailableModels([]); // Reset models on failure
     } finally {
       setIsFetchingModels(false);
     }
