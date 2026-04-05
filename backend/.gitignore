@@ -1,0 +1,4 @@
+workspace_*/
+project_*.zip
+uvicorn.log
+OpenManus/
