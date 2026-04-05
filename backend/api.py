@@ -106,15 +106,18 @@ temperature = 0.4
 
     try:
         process = await asyncio.create_subprocess_exec(
-            "python", "main.py",
+            "python", "main.py", "--prompt", prompt,
             cwd=openmanus_dir,
-            stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
 
-        stdout, stderr = await process.communicate(input=prompt.encode('utf-8'))
+        stdout, stderr = await process.communicate()
         print(f"OpenManus Process Finished. Code: {process.returncode}")
+
+        # We can dump stdout for logging/debugging if needed:
+        # print("OpenManus STDOUT:", stdout.decode("utf-8", errors="ignore"))
+        # print("OpenManus STDERR:", stderr.decode("utf-8", errors="ignore"))
 
     except Exception as e:
         print(f"Error running OpenManus: {e}")
