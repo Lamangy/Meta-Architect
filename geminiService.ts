@@ -65,16 +65,25 @@ export const extractCode = (markdown: string): string | undefined => {
 
 export const fetchModels = async (apiKey: string) => {
   try {
-    const ai = new GoogleGenAI({ apiKey });
-    const response = await ai.models.list();
-    const models = [];
-    for await (const model of response) {
-      models.push(model);
+    // We use the REST API directly to avoid browser SDK issues with iterators
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error?.message || "Ungültiger API-Key");
     }
+
+    const data = await response.json();
+    if (!data.models) {
+        throw new Error("Keine Modelle gefunden");
+    }
+
     // Filter for models that support generateContent
-    return models
-      .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
-      .map(m => m.name.replace('models/', ''));
+    const mappedModels = data.models
+      .filter((m: any) => m.supportedGenerationMethods?.includes('generateContent'))
+      .map((m: any) => m.name.replace('models/', ''));
+
+    return mappedModels;
   } catch (error) {
     console.error("Error fetching models:", error);
     throw error;
